@@ -1,0 +1,91 @@
+<style>
+    .marquee {
+        animation: marquee 50s linear infinite;
+    }
+
+    @keyframes marquee {
+        0% {
+            transform: translate(0, 0);
+        }
+        100% {
+            transform: translate(-10500px, 0);
+        }
+    }
+
+    .gb_stage1, .gb_stage2, .gb_stage3, .gb_stage4 {
+        display: none;
+        opacity: 0;
+        transition: 1s;
+    }
+
+    #hidden_marquee {
+        display: block;
+        opacity: 0;
+        transition: 1s;
+    }
+
+    .trait_likert {
+        display: none;
+        opacity: 0;
+        transition: 1s;
+    }
+</style>
+
+<div id="genetics_background" class="carousel-item full grid-background">
+
+    <svg class="figure" viewBox="0 0 1000 1000">
+        <g class="text-content">
+            <g class="gb_stage0">
+                <text x="100" y="100">So how does this relate to <tspan font-weight="bold">genetics</tspan>?</text>
+                <text x="100" y="200">Your genome is a very long sequence of DNA bases</text>
+                <text x="100" y="250">(represented as "A", "T", "G", and "C"). There are in fact</text>
+                <text x="100" y="300">approximately three billion of these bases lined up</text>
+                <text x="100" y="350">one after the other, and the exact combination is</text>
+                <text x="100" y="400">unique to just you.</text>
+            </g>
+            <g class="gb_stage1">
+                <text x="100" y="100">If you compare your genome to others, you will see</text>
+                <text x="100" y="150">that there are subtle differences. For example, where</text>
+                <text x="100" y="200">you have a "T", they have a "C". We describe each</text>
+                <text x="100" y="250">observed DNA base at a site as a <tspan font-weight="bold">variant</tspan> and a site</text>
+                <text x="100" y="300">with multiple variants as <tspan font-weight="bold">polymorphic</tspan>. If you look at</text>
+                <text x="100" y="350">enough genomes, you will see that nearly all positions</text>
+                <text x="100" y="400">in the genome are polymorphic to some degree.</text>
+            </g>
+        </g>
+        <g class="diagram">
+            <g class="gb_stage0 gb_stage1">
+                <text x="-500" y="600" font-size=2em class="marquee" letter-spacing="5">TCTCGTTCCCGCAGCTTGCCAGCACTTTCAGAATCATGGCGTGCATGGTAGAATGACTCT<tspan fill="black">G</tspan>TATAACGGACTTCGACATGGCAATATCCCCCCCTTTCAACTTC<tspan fill="black">G</tspan>TAGAGGAGAAAAGTATTGACATGAGC<tspan fill="black">G</tspan>CTCCCGGCACAACGGCCAAAGAAGTCTCCAATTTCTTA<tspan fill="black">G</tspan>TTTCCGAATGACATGCGTCTCCTTGCGGGTAAATCGCCGACCGCAAAACTTAGGAGCCAGGGGGAACAGATAGGTCTA<tspan fill="black">G</tspan>ATTAGCTTAAGGGA<tspan fill="black">T</tspan>GTAAATCCTGGGATCGTTCAGTTGTAACCATATACTTACGCTGGGGCTTCTCCGGCGGATTTTTACTGTCACCAACCACGAGATTTGAAGTAAACCAATTGAGCACATAGCC</text>
+            </g>
+            <g id="hidden_marquee" class="gb_stage1">
+                <text x="-500" y="550" font-size=2em class="marquee" letter-spacing="5">TCTCGTTCCCGCAGCTTGCCAGCACTTTCAGAATCATGGCGTGCATGGTAGAATGACTCT<tspan fill="red">A</tspan>TATAACGGACTTCGACATGGCAATATCCCCCCCTTTCAACTTC<tspan fill="black">G</tspan>TAGAGGAGAAAAGTATTGACATGAGC<tspan fill="black">G</tspan>CTCCCGGCACAACGGCCAAAGAAGTCTCCAATTTCTTA<tspan fill="red"  >C</tspan>TTTCCGAATGACATGCGTCTCCTTGCGGGTAAATCGCCGACCGCAAAACTTAGGAGCCAGGGGGAACAGATAGGTCTA<tspan fill="black">G</tspan>ATTAGCTTAAGGGA<tspan fill="black">T</tspan>GTAAATCCTGGGATCGTTCAGTTGTAACCATATACTTACGCTGGGGCTTCTCCGGCGGATTTTTACTGTCACCAACCACGAGATTTGAAGTAAACCAATTGAGCACATAGCC</text>
+                <text x="-500" y="650" font-size=2em class="marquee" letter-spacing="5">TCTCGTTCCCGCAGCTTGCCAGCACTTTCAGAATCATGGCGTGCATGGTAGAATGACTCT<tspan fill="black">G</tspan>TATAACGGACTTCGACATGGCAATATCCCCCCCTTTCAACTTC<tspan fill="black">G</tspan>TAGAGGAGAAAAGTATTGACATGAGC<tspan fill="red"  >T</tspan>CTCCCGGCACAACGGCCAAAGAAGTCTCCAATTTCTTA<tspan fill="red"  >C</tspan>TTTCCGAATGACATGCGTCTCCTTGCGGGTAAATCGCCGACCGCAAAACTTAGGAGCCAGGGGGAACAGATAGGTCTA<tspan fill="red"  >T</tspan>ATTAGCTTAAGGGA<tspan fill="black">T</tspan>GTAAATCCTGGGATCGTTCAGTTGTAACCATATACTTACGCTGGGGCTTCTCCGGCGGATTTTTACTGTCACCAACCACGAGATTTGAAGTAAACCAATTGAGCACATAGCC</text>
+                <text x="-500" y="700" font-size=2em class="marquee" letter-spacing="5">TCTCGTTCCCGCAGCTTGCCAGCACTTTCAGAATCATGGCGTGCATGGTAGAATGACTCT<tspan fill="black">G</tspan>TATAACGGACTTCGACATGGCAATATCCCCCCCTTTCAACTTC<tspan fill="black">G</tspan>TAGAGGAGAAAAGTATTGACATGAGC<tspan fill="black">G</tspan>CTCCCGGCACAACGGCCAAAGAAGTCTCCAATTTCTTA<tspan fill="black">G</tspan>TTTCCGAATGACATGCGTCTCCTTGCGGGTAAATCGCCGACCGCAAAACTTAGGAGCCAGGGGGAACAGATAGGTCTA<tspan fill="red"  >T</tspan>ATTAGCTTAAGGGA<tspan fill="black">T</tspan>GTAAATCCTGGGATCGTTCAGTTGTAACCATATACTTACGCTGGGGCTTCTCCGGCGGATTTTTACTGTCACCAACCACGAGATTTGAAGTAAACCAATTGAGCACATAGCC</text>
+                <text x="-500" y="750" font-size=2em class="marquee" letter-spacing="5">TCTCGTTCCCGCAGCTTGCCAGCACTTTCAGAATCATGGCGTGCATGGTAGAATGACTCT<tspan fill="black">G</tspan>TATAACGGACTTCGACATGGCAATATCCCCCCCTTTCAACTTC<tspan fill="red"  >C</tspan>TAGAGGAGAAAAGTATTGACATGAGC<tspan fill="black">G</tspan>CTCCCGGCACAACGGCCAAAGAAGTCTCCAATTTCTTA<tspan fill="black">G</tspan>TTTCCGAATGACATGCGTCTCCTTGCGGGTAAATCGCCGACCGCAAAACTTAGGAGCCAGGGGGAACAGATAGGTCTA<tspan fill="black">G</tspan>ATTAGCTTAAGGGA<tspan fill="red"  >G</tspan>GTAAATCCTGGGATCGTTCAGTTGTAACCATATACTTACGCTGGGGCTTCTCCGGCGGATTTTTACTGTCACCAACCACGAGATTTGAAGTAAACCAATTGAGCACATAGCC</text>
+            </g>
+        </g>
+        <g class="buttons">
+            <g id="gb0_buttons" class="gb_stage0"></g>
+            <g id="gb1_buttons" class="gb_stage1"></g>
+        </g>
+    </svg>
+
+    <script>
+        d3.selectAll(".gb_stage0").style("display", "block");
+        d3.selectAll(".gb_stage0").style("opacity", "1");
+
+        create_button("gb0_buttons", "gb0_next", "Next", 450, 900, 100, 50);
+        create_button("gb1_buttons", "gb1_next", "Next", 450, 900, 100, 50);
+        
+        d3.select("#gb0_next")
+            .on("click", function(event, d) {
+                d3.selectAll(".gb_stage0").style("display", "none");
+                d3.selectAll(".gb_stage1").style("display", "block").transition().style("opacity", "1");
+            });
+        
+        d3.select("#gb1_next")
+            .on("click", function(event, d) {
+                $(".carousel").carousel("next");
+            })
+    </script>
+</div>
