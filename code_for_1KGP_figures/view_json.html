@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Document</title>
+        <script src="https://d3js.org/d3.v4.js"></script>
+        <style>
+            .euler_tooltip {
+                position: absolute;
+                max-width: 500px;
+                padding: 10px;
+                background-color: white;
+                color: black;
+                text-align: left;
+                z-index: 9999;
+            }
+            path {
+                transition: opacity 0.25s, stroke-width 0.25s;
+            }
+            svg {
+                display: block;
+            }
+            #all_euler_diagrams {
+                display: flex;
+                flex-flow: row wrap;
+                justify-content: space-evenly;
+            }
+            .upset {
+                text-align: center;
+            }
+            .upset img {
+                width: 100%;
+                max-width: 1000px;
+            }
+
+            .hidden_thumbnail {
+                display: none;
+            }
+        </style>
+        <script>
+            var stepBefore = d3.line().curve(d3.curveStepBefore);
+            // Define the div for the tooltip
+            var tip = d3.select(".section").append("div")
+                .attr("class", "euler_tooltip")
+                .style("display", "none");
+
+            function wrap(
+                text,
+                width,
+                dyAdjust,
+                lineHeightEms,
+                lineHeightSquishFactor,
+                splitOnHyphen,
+                centreVertically
+                ) {
+                // Use default values for the last three parameters if values are not provided.
+                if (!lineHeightEms) lineHeightEms = 1.05;
+                if (!lineHeightSquishFactor) lineHeightSquishFactor = 1;
+                if (splitOnHyphen == null) splitOnHyphen = true;
+                if (centreVertically == null) centreVertically = true;
+
+                text.each(function () {
+                    var text = d3.select(this),
+                    x = text.attr("x"),
+                    y = text.attr("y");
+
+                    var words = [];
+                    text
+                    .text()
+                    .split(/\s+/)
+                    .forEach(function (w) {
+                        if (splitOnHyphen) {
+                        var subWords = w.split("-");
+                        for (var i = 0; i < subWords.length - 1; i++)
+                            words.push(subWords[i] + "-");
+                        words.push(subWords[subWords.length - 1] + " ");
+                        } else {
+                        words.push(w + " ");
+                        }
+                    });
+
+                    text.text(null); // Empty the text element
+
+                    // `tspan` is the tspan element that is currently being added to
+                    var tspan = text.append("tspan");
+
+                    var line = ""; // The current value of the line
+                    var prevLine = ""; // The value of the line before the last word (or sub-word) was added
+                    var nWordsInLine = 0; // Number of words in the line
+                    for (var i = 0; i < words.length; i++) {
+                    var word = words[i];
+                    prevLine = line;
+                    line = line + word;
+                    ++nWordsInLine;
+                    tspan.text(line.trim());
+                    if (tspan.node().getComputedTextLength() > width && nWordsInLine > 1) {
+                        // The tspan is too long, and it contains more than one word.
+                        // Remove the last word and add it to a new tspan.
+                        tspan.text(prevLine.trim());
+                        prevLine = "";
+                        line = word;
+                        nWordsInLine = 1;
+                        tspan = text.append("tspan").text(word.trim());
+                    }
+                    }
+
+                    var tspans = text.selectAll("tspan");
+
+                    var h = lineHeightEms;
+                    // Reduce the line height a bit if there are more than 2 lines.
+                    if (tspans.size() > 2)
+                    for (var i = 0; i < tspans.size(); i++) h *= lineHeightSquishFactor;
+
+                    tspans.each(function (d, i) {
+                    // Calculate the y offset (dy) for each tspan so that the vertical centre
+                    // of the tspans roughly aligns with the text element's y position.
+                    var dy = i * h + dyAdjust;
+                    if (centreVertically) dy -= ((tspans.size() - 1) * h) / 2;
+                    d3.select(this)
+                        .attr("y", y)
+                        .attr("x", x)
+                        .attr("dy", dy + "em");
+                    });
+                });
+                }
+
+            function d3_euler(data, id, dim, title, title_color, flip_title, loc, interactive) {
+
+                var svg_container = d3.select(loc)
+                    .append("svg")
+                    .attr("id", id)
+                    .attr("width", dim)
+                    .attr("xmlns", "http://www.w3.org/2000/svg")
+                    .attr("viewBox", "0 0 " + dim + " " + dim);
+
+                var ellipses = data;
+
+                var downscale = 15;
+                var shift = dim/2;
+
+                svg_container
+                    .selectAll("ellipses")
+                    .data(ellipses)
+                    .enter()
+                    .append("path")
+                    .attr("id", function(d) { return d._row; })
+                    .attr("stroke", function(d) { return d.color; })
+                    .attr("stroke-width", 3)
+                    .attr("stroke-dasharray", function(d) { return d.stroke_dasharray; })
+                    .attr("fill", function(d) { return d.fill; })
+                    .attr("d", function(d) {
+                        return ["M", (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift), "A", d.a/downscale, d.b/downscale, 0, 1, 1, (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift-0.001)].join(' ')
+                    })
+                    .attr("transform", function(d) {
+                        return "rotate(" + d.phi*(180/Math.PI) + " " + (d.h/downscale+shift) + " " + (d.k/downscale+shift) + ")"; 
+                    });
+                
+                if (interactive) {
+                    svg_container
+                        .selectAll("path")
+                            .on("mouseover", function(d) {
+                                d3.select("#"+id)
+                                    .selectAll("path")
+                                        .style("opacity", 0.25);
+                                d3.select(this)
+                                    .style("cursor", "pointer")
+                                    .style("stroke-width", 7)
+                                    .style("opacity", 1);
+                                tip
+                                    .style("display", "block")
+                                    .html("<h3 style='margin: 0px;'>" + d.description + "</h3></br>1KGP Abbreviation: " + d.abbreviation + "</br>Number of Sampled Individuals: " + d.sampled_individuals.toLocaleString() + "</br>Number of Common Variants: " + d.common_variants.toLocaleString() + "</br>Number of Unshared Common Variants: "+d.unshared_common_variants.toLocaleString())
+                                    .style("border", d.color + " solid 7px")
+                                    .style("left", (d3.event.pageX) + "px")
+                                    .style("top", (d3.event.pageY+25) + "px");
+                            })
+                            .on("mouseout", function(d) {
+                                tip.style("display", "none");
+                                d3.select("#"+id)
+                                    .selectAll("path")
+                                        .style("opacity", 1)
+                                        .style("stroke-width", 3);
+                            });
+                }
+                
+                if (title != "") {
+                    if (flip_title != "") {
+                        svg_container
+                            .append("text")
+                            .text(title)
+                            .attr("x", dim/2)
+                            .attr("y", dim/2)
+                            .attr("text-anchor", "middle")
+                            .attr("transform", "rotate(180, " + dim/2 + ", " + dim/2 + ")")
+                            .style("font-family", "Arial")
+                            .style("font-size", 25)
+                            .style("fill", title_color)
+                            .call(wrap, 300, 0, 1);
+                    } else {
+                        svg_container
+                            .append("text")
+                            .text(title)
+                            .attr("x", dim/2)
+                            .attr("y", dim/2)
+                            .attr("text-anchor", "middle")
+                            .style("font-family", "Arial")
+                            .style("font-size", 25)
+                            .style("fill", title_color)
+                            .call(wrap, 300, 0, 1);
+                    }
+                }
+            }
+
+            function add_coffee_stain_interactivity(id) {
+                d3.select("#"+id)
+                    .selectAll("path")
+                        .on("mouseover", function(d) {
+                            d3.select("#"+id)
+                                .selectAll("path")
+                                    .style("cursor", "pointer")
+                                    .style("opacity", 0.25);
+                            d3.select("#"+id)
+                                .select("path")
+                                    .style("opacity", 1);
+                        })
+                        .on("mouseout", function(d) {
+                            tip.style("display", "none");
+                            d3.select("#"+id)
+                                .selectAll("path")
+                                    .style("opacity", 1);
+                        });
+            }    
+        </script>
+    </head>
+    <body>
+
+        <div id="figure2" style="display: flex; justify-content: center;"></div>
+
+        <script>
+            var dim = 750;
+
+            var svg_container = d3.select("#figure2")
+                .append("svg")
+                .attr("id", "americas_overview")
+                .attr("width", dim)
+                .attr("xmlns", "http://www.w3.org/2000/svg")
+                .attr("viewBox", "0 0 " + dim + " " + dim);
+
+            var ellipses = [{"abbreviation":"PEL","h":0,"k":-4000,"a":1279.1135,"b":1279.1135,"phi":0,"common_variants":5140058,"unshared_common_variants":89425,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"#E69F00","fill":"none","stroke_dasharray":"none"},{"abbreviation":"MXL","h":4000,"k":0,"a":1342.6299,"b":1342.6299,"phi":0,"common_variants":5663208,"unshared_common_variants":36285,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"#56B4E9","fill":"none","stroke_dasharray":"none"},{"abbreviation":"CEU","h":0,"k":4000,"a":1350.0972,"b":1350.0972,"phi":0,"common_variants":5726377,"unshared_common_variants":143951,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"#CC79A7","fill":"none","stroke_dasharray":"none"},{"abbreviation":"GIH","h":-4000,"k":0,"a":1357.4166,"b":1357.4166,"phi":0,"common_variants":5788635,"unshared_common_variants":246658,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"#5E159A","fill":"none","stroke_dasharray":"none"},{"abbreviation":"CLM","h":2828.4271,"k":2828.4271,"a":1369.9063,"b":1369.9063,"phi":0,"common_variants":5895649,"unshared_common_variants":30179,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"#009E73","fill":"none","stroke_dasharray":"none"},{"abbreviation":"PUR","h":2828.4271,"k":-2828.4271,"a":1388.1292,"b":1388.1292,"phi":0,"common_variants":6053543,"unshared_common_variants":41531,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"#000000","fill":"none","stroke_dasharray":"none"},{"abbreviation":"ASW","h":-2828.4271,"k":-2828.4271,"a":1558.5375,"b":1558.5375,"phi":0,"common_variants":7631052,"unshared_common_variants":312765,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"#0072B2","fill":"none","stroke_dasharray":"none"},{"abbreviation":"ACB","h":-2828.4271,"k":2828.4271,"a":1597.628,"b":1597.628,"phi":0,"common_variants":8018649,"unshared_common_variants":821254,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"#D55E00","fill":"none","stroke_dasharray":"none"}];
+
+            var downscale = 15;
+            var shift = dim/2;
+
+            svg_container
+                .append("text")
+                .text("Common genetic variants found within samples from the Americas")
+                .attr("x", dim/2)
+                .attr("y", dim/2)
+                .attr("text-anchor", "middle")
+                .style("font-family", "Arial")
+                .style("font-size", 25)
+                .style("fill", "#696969")
+                .call(wrap, 300, -1, 1)
+            
+            svg_container
+                .append("text")
+                .text('"Common" is defined as having a minor allele frequency >5%.')
+                .attr("x", dim/2)
+                .attr("y", dim/2)
+                .attr("text-anchor", "middle")
+                .style("font-family", "Arial")
+                .style("font-size", 14)
+                .style("fill", "#696969")
+                .call(wrap, 300, 4, 1)
+
+            var ellipse_container = svg_container
+                .selectAll("ellipses")
+                .data(ellipses)
+                .enter()
+                .append("g")
+                .attr("id", function(d) { return d.abbreviation; });
+
+            ellipse_container
+                .append("path")
+                .attr("stroke", function(d) { return d.color; })
+                .attr("stroke-width", 3)
+                .attr("stroke-dasharray", function(d) { return d.stroke_dasharray; })
+                .attr("fill", function(d) { return d.fill; })
+                .attr("d", function(d) {
+                    return ["M", (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift), "A", d.a/downscale, d.b/downscale, 0, 1, 1, (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift-0.001)].join(' ')
+                })
+                .attr("transform", function(d) {
+                    return "rotate(" + d.phi*(180/Math.PI) + " " + (d.h/downscale+shift) + " " + (d.k/downscale+shift) + ")"; 
+                });
+
+            ellipse_container
+                .append("text")
+                .text(function(d) { return d.description; })
+                .attr("x", function(d) { return d.h/downscale+shift; })
+                .attr("y", function(d) { return d.k/downscale+shift; })
+                .attr("text-anchor", "middle")
+                .style("fill", function(d) { return d.color; })
+                .style("font-family", "Arial")
+                .style("font-weight", "bold")
+                .style("font-size", 14)
+                .call(wrap, 150, -0.75, 1);
+            
+            ellipse_container
+                .append("text")
+                .text(function(d) { return d.sampled_individuals.toLocaleString() + " individuals"; })
+                .attr("x", function(d) { return d.h/downscale+shift; })
+                .attr("y", function(d) { return d.k/downscale+shift; })
+                .attr("text-anchor", "middle")
+                .attr("dominant-baseline", "middle")
+                .style("fill", function(d) { return d.color; })
+                .style("font-family", "Arial")
+                .style("font-size", 14)
+                .call(wrap, 150, 2, 1);
+                
+            ellipse_container
+                .append("text")
+                .text(function(d) { return d.common_variants.toLocaleString() + " variants"; })
+                .attr("x", function(d) { return d.h/downscale+shift; })
+                .attr("y", function(d) { return d.k/downscale+shift; })
+                .attr("text-anchor", "middle")
+                .attr("dominant-baseline", "middle")
+                .style("fill", function(d) { return d.color; })
+                .style("font-family", "Arial")
+                .style("font-size", 14)
+                .call(wrap, 150, 3.5, 1);
+        </script>
+
+        <div id="figure3" style="display: flex; justify-content: center;"></div>
+
+        <script>
+            d3_euler(
+                data = [{"abbreviation":"ACB","h":-214.7493,"k":-134.5646,"a":1723.0474,"b":1409.8914,"phi":0.5397,"common_variants":8018649,"unshared_common_variants":821254,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"#D55E00","fill":"none","stroke_dasharray":"none"},{"abbreviation":"ASW","h":-41.2687,"k":-134.5646,"a":1669.0391,"b":1393.1257,"phi":1.2936,"common_variants":7631052,"unshared_common_variants":312765,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"#0072B2","fill":"none","stroke_dasharray":"none"},{"abbreviation":"CEU","h":249.5747,"k":426.8674,"a":1173.417,"b":1443.4213,"phi":3.1518,"common_variants":5726377,"unshared_common_variants":143951,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"#CC79A7","fill":"none","stroke_dasharray":"none"},{"abbreviation":"CLM","h":301.3434,"k":298.505,"a":1419.8659,"b":1245.3999,"phi":-1.2287,"common_variants":5895649,"unshared_common_variants":30179,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"#009E73","fill":"none","stroke_dasharray":"none"},{"abbreviation":"GIH","h":178.8658,"k":434.3457,"a":1142.1811,"b":1516.7568,"phi":0.7193,"common_variants":5788635,"unshared_common_variants":246658,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"#5E159A","fill":"none","stroke_dasharray":"none"},{"abbreviation":"MXL","h":362.5722,"k":269.3105,"a":1185.0064,"b":1437.0031,"phi":3.5916,"common_variants":5663208,"unshared_common_variants":36285,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"#56B4E9","fill":"none","stroke_dasharray":"none"},{"abbreviation":"PEL","h":453.3384,"k":227.2295,"a":1437.9456,"b":1093.7241,"phi":2.0324,"common_variants":5140058,"unshared_common_variants":89425,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"#E69F00","fill":"none","stroke_dasharray":"none"},{"abbreviation":"PUR","h":240.2168,"k":306.2714,"a":1437.158,"b":1259.7638,"phi":-1.5006,"common_variants":6053543,"unshared_common_variants":41531,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"#000000","fill":"none","stroke_dasharray":"none"}],
+                id = "americas_example_euler",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figure3",
+                interactive = true
+            );
+        </script>
+
+        <div id="figure5" style="display: flex; justify-content: center;"></div>
+
+        <script>
+            var dim = 600;
+
+            var svg_container = d3.select("#figure5")
+                .append("svg")
+                .attr("id", "americas_in_context")
+                .attr("width", dim)
+                .attr("viewBox", "0 0 " + dim + " " + dim);
+
+            
+            var ellipses = [
+                {"h":0,"k":0,"a":30378.6089,"b":30378.6089,"phi":1.1032,"color":"#A9A9A9","fill":"#FFFFFF","stroke_dasharray":"5","_row":"Measurable"},
+                {"h":5483.8806+5000,"k":0,"a":3671.174,"b":3671.174,"phi":1.1032,"color":"#A9A9A9","fill":"#FFFFFF","stroke_dasharray":"5","_row":"Variants"},
+                {"h":4403.2194+6000,"k":-300.1752,"a":1368.8722,"b":1774.8163,"phi":-0.4001,"color":"#D55E00","fill":"none","stroke_dasharray":"none","_row":"ACB"},
+                {"h":4541.2784+6000,"k":-191.4903,"a":1672.9907,"b":1386.8882,"phi":-1.3701,"color":"#0072B2","fill":"none","stroke_dasharray":"none","_row":"ASW"},
+                {"h":4449.2396+6000,"k":431.58,"a":1198.0296,"b":1416.417,"phi":0.4923,"color":"#CC79A7","fill":"none","stroke_dasharray":"none","_row":"CEU"},
+                {"h":4570.8702+6000,"k":366.3249,"a":1235.6009,"b":1433.4332,"phi":0.9993,"color":"#009E73","fill":"none","stroke_dasharray":"none","_row":"CLM"},
+                {"h":4390.5036+6000,"k":403.6002,"a":1166.071,"b":1478.4687,"phi":1.4425,"color":"#5E159A","fill":"none","stroke_dasharray":"none","_row":"GIH"},
+                {"h":4623.4456+6000,"k":401.7964,"a":1381.8799,"b":1231.2291,"phi":-0.406,"color":"#56B4E9","fill":"none","stroke_dasharray":"none","_row":"MXL"},
+                {"h":4718.9992+6000,"k":417.4029,"a":1393.9516,"b":1124.6814,"phi":-0.4189,"color":"#E69F00","fill":"none","stroke_dasharray":"none","_row":"PEL"},
+                {"h":4522.2989+6000,"k":334.2264,"a":1278.9711,"b":1404.7051,"phi":0.4775,"color":"#000000","fill":"none","stroke_dasharray":"none","_row":"PUR"}
+            ] 
+
+            var downscale = 130;
+            var shift = dim/2;
+
+
+            var measurable = svg_container
+                .selectAll("ellipses")
+                .data(ellipses)
+                .enter()
+                .filter(function(d) { return (d._row == "Measurable"); })
+                .append("g");
+
+            measurable
+                .append("path")
+                .attr("d", function(d) { return stepBefore([[d.h/downscale+shift-200, d.k/downscale+d.b/downscale+shift-480], [d.h/downscale+shift, d.k/downscale+d.b/downscale+shift-400]]) ;})
+                .attr("stroke-width", 2)
+                .attr("stroke", "#A9A9A9")
+                .attr("fill", "none");
+
+            measurable
+                .append("text")
+                .text("Measurable locations in the human genome (~2.9 billion sites)")
+                .attr("x", function(d) {return d.h/downscale+shift;})
+                .attr("y", function(d) {return d.k/downscale+d.b/downscale+shift-490; })
+                .style("text-anchor", "middle")
+                .style("fill", "#696969")
+                .style("font-family", "Arial")
+                .style("font-size", 18);
+
+            measurable
+                .append("path")
+                .attr("id", function(d) { return d._row; })
+                .attr("stroke", function(d) { return d.color; })
+                .attr("stroke-width", 3)
+                .attr("stroke-dasharray", function(d) { return d.stroke_dasharray; })
+                .attr("fill", function(d) { return d.fill; })
+                .attr("d", function(d) {
+                    return ["M", (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift), "A", d.a/downscale, d.b/downscale, 0, 1, 1, (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift-0.001)].join(' ')
+                })
+                .attr("transform", function(d) {
+                    return "rotate(" + d.phi*(180/Math.PI) + " " + (d.h/downscale+shift) + " " + (d.k/downscale+shift) + ")"; 
+                });
+
+        var variants = svg_container
+                .selectAll("ellipses")
+                .data(ellipses)
+                .enter()
+                .filter(function(d) { return (d._row == "Variants"); })
+                .append("g");
+
+            variants
+                .append("path")
+                .attr("d", function(d) { return stepBefore([[d.h/downscale+shift-100, d.k/downscale+d.b/downscale+shift-65], [d.h/downscale+shift, d.k/downscale+d.b/downscale+shift-25]]) ;})
+                .attr("stroke-width", 2)
+                .attr("stroke", "#A9A9A9")
+                .attr("fill", "none");
+
+            variants
+                .append("text")
+                .text("Observed variants within 706 people from the Americas (~43 million sites)")
+                .attr("x", function(d) {return d.h/downscale+shift-100;})
+                .attr("y", function(d) {return d.k/downscale+d.b/downscale+shift-110; })
+                .style("text-anchor", "middle")
+                .style("fill", "#696969")
+                .style("font-family", "Arial")
+                .style("font-size", 18)
+                .call(wrap, 250, 1, 1);
+
+            variants
+                .append("path")
+                .attr("id", function(d) { return d._row; })
+                .attr("stroke", function(d) { return d.color; })
+                .attr("stroke-width", 3)
+                .attr("stroke-dasharray", function(d) { return d.stroke_dasharray; })
+                .attr("fill", function(d) { return d.fill; })
+                .attr("d", function(d) {
+                    return ["M", (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift), "A", d.a/downscale, d.b/downscale, 0, 1, 1, (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift-0.001)].join(' ')
+                })
+                .attr("transform", function(d) {
+                    return "rotate(" + d.phi*(180/Math.PI) + " " + (d.h/downscale+shift) + " " + (d.k/downscale+shift) + ")"; 
+                });
+
+            var common_text = svg_container
+                .selectAll("text")
+                .data(ellipses)
+                .enter()
+                .filter(function(d) { return (d._row == "ACB"); })
+                .append("g");
+            
+            common_text
+                .append("path")
+                .attr("d", function(d) { return stepBefore([[d.h/downscale+shift, d.k/downscale+d.b/downscale+shift], [d.h/downscale+shift-20, d.k/downscale+d.b/downscale+shift+60]]) ;})
+                .attr("stroke-width", 2)
+                .attr("stroke", "#A9A9A9")
+                .attr("fill", "none");
+
+            common_text
+                .append("text")
+                .text("Euler diagam of common variants from the Americas (Figure 4B)")
+                .attr("x", function(d) {return d.h/downscale+shift-150;})
+                .attr("y", function(d) {return d.k/downscale+d.b/downscale+shift+50; })
+                .style("text-anchor", "middle")
+                .style("fill", "#696969")
+                .style("font-family", "Arial")
+                .style("font-size", 18)
+                .call(wrap, 250, 1, 1);
+
+            common_text
+                .append("path")
+                .attr("id", function(d) { return d._row; })
+                .attr("stroke", function(d) { return d.color; })
+                .attr("stroke-width", 3)
+                .attr("stroke-dasharray", function(d) { return d.stroke_dasharray; })
+                .attr("fill", function(d) { return d.fill; })
+                .attr("d", function(d) {
+                    return ["M", (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift), "A", d.a/downscale, d.b/downscale, 0, 1, 1, (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift-0.001)].join(' ')
+                })
+                .attr("transform", function(d) {
+                    return "rotate(" + d.phi*(180/Math.PI) + " " + (d.h/downscale+shift) + " " + (d.k/downscale+shift) + ")"; 
+                });
+
+            var common = svg_container
+                .selectAll("text")
+                .data(ellipses)
+                .enter()
+                .filter(function(d) { return (d._row != "Measurable" & d._row != "Variants"); })
+                .append("g");
+
+            common
+                .append("path")
+                .attr("id", function(d) { return d._row; })
+                .attr("stroke", function(d) { return d.color; })
+                .attr("stroke-width", 3)
+                .attr("stroke-dasharray", function(d) { return d.stroke_dasharray; })
+                .attr("fill", function(d) { return d.fill; })
+                .attr("d", function(d) {
+                    return ["M", (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift), "A", d.a/downscale, d.b/downscale, 0, 1, 1, (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift-0.001)].join(' ')
+                })
+                .attr("transform", function(d) {
+                    return "rotate(" + d.phi*(180/Math.PI) + " " + (d.h/downscale+shift) + " " + (d.k/downscale+shift) + ")"; 
+                });
+        </script>
+
+        <div id="figure1" style="display: flex; justify-content: center;"></div>
+
+        <script>
+            var dim = 600;
+
+            var svg_container = d3.select("#figure1")
+                .append("svg")
+                .attr("id", "americas_genome")
+                .attr("width", dim)
+                .attr("viewBox", "0 0 " + dim + " " + dim);
+
+            
+            var ellipses = [
+                {"h":0,"k":0,"a":30378.6089,"b":30378.6089,"phi":1.1032,"color":"#A9A9A9","fill":"#FFFFFF","stroke_dasharray":"5","_row":"Measurable"},
+                {"h":5483.8806+5000,"k":0,"a":3671.174,"b":3671.174,"phi":1.1032,"color":"#A9A9A9","fill":"#FFFFFF","stroke_dasharray":"5","_row":"Variants"},
+                {"h":5483.8806+5000,"k":0,"a":1783.4049,"b":1783.4049,"phi":5.0914,"color":"none","fill":"#56B4E9","stroke_dasharray":"none","_row":"Common"}
+            ] 
+
+            var downscale = 130;
+            var shift = dim/2;
+
+            var measurable = svg_container
+                .selectAll("ellipses")
+                .data(ellipses)
+                .enter()
+                .filter(function(d) { return (d._row == "Measurable"); })
+                .append("g");
+
+            measurable
+                .append("path")
+                .attr("d", function(d) { return stepBefore([[d.h/downscale+shift-200, d.k/downscale+d.b/downscale+shift-480], [d.h/downscale+shift, d.k/downscale+d.b/downscale+shift-400]]) ;})
+                .attr("stroke-width", 2)
+                .attr("stroke", "#A9A9A9")
+                .attr("fill", "none");
+
+            measurable
+                .append("text")
+                .text("Measurable locations in the human genome (~2.9 billion sites)")
+                .attr("x", function(d) {return d.h/downscale+shift;})
+                .attr("y", function(d) {return d.k/downscale+d.b/downscale+shift-490; })
+                .style("text-anchor", "middle")
+                .style("fill", "#696969")
+                .style("font-family", "Arial")
+                .style("font-size", 18);
+
+            measurable
+                .append("path")
+                .attr("id", function(d) { return d._row; })
+                .attr("stroke", function(d) { return d.color; })
+                .attr("stroke-width", 3)
+                .attr("stroke-dasharray", function(d) { return d.stroke_dasharray; })
+                .attr("fill", function(d) { return d.fill; })
+                .attr("d", function(d) {
+                    return ["M", (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift), "A", d.a/downscale, d.b/downscale, 0, 1, 1, (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift-0.001)].join(' ')
+                })
+                .attr("transform", function(d) {
+                    return "rotate(" + d.phi*(180/Math.PI) + " " + (d.h/downscale+shift) + " " + (d.k/downscale+shift) + ")"; 
+                });
+
+        var variants = svg_container
+                .selectAll("ellipses")
+                .data(ellipses)
+                .enter()
+                .filter(function(d) { return (d._row == "Variants"); })
+                .append("g");
+
+            variants
+                .append("path")
+                .attr("d", function(d) { return stepBefore([[d.h/downscale+shift-100, d.k/downscale+d.b/downscale+shift-65], [d.h/downscale+shift, d.k/downscale+d.b/downscale+shift-25]]) ;})
+                .attr("stroke-width", 2)
+                .attr("stroke", "#A9A9A9")
+                .attr("fill", "none");
+
+            variants
+                .append("text")
+                .text("Observed variants within 706 people from the Americas (~43 million sites)")
+                .attr("x", function(d) {return d.h/downscale+shift-100;})
+                .attr("y", function(d) {return d.k/downscale+d.b/downscale+shift-110; })
+                .style("text-anchor", "middle")
+                .style("fill", "#696969")
+                .style("font-family", "Arial")
+                .style("font-size", 18)
+                .call(wrap, 250, 1, 1);
+
+            variants
+                .append("path")
+                .attr("id", function(d) { return d._row; })
+                .attr("stroke", function(d) { return d.color; })
+                .attr("stroke-width", 3)
+                .attr("stroke-dasharray", function(d) { return d.stroke_dasharray; })
+                .attr("fill", function(d) { return d.fill; })
+                .attr("d", function(d) {
+                    return ["M", (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift), "A", d.a/downscale, d.b/downscale, 0, 1, 1, (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift-0.001)].join(' ')
+                })
+                .attr("transform", function(d) {
+                    return "rotate(" + d.phi*(180/Math.PI) + " " + (d.h/downscale+shift) + " " + (d.k/downscale+shift) + ")"; 
+                });
+
+            var common = svg_container
+                .selectAll("text")
+                .data(ellipses)
+                .enter()
+                .filter(function(d) { return (d._row == "Common"); })
+                .append("g");
+
+            common
+                .append("path")
+                .attr("d", function(d) { return stepBefore([[d.h/downscale+shift, d.k/downscale+d.b/downscale+shift-10], [d.h/downscale+shift-20, d.k/downscale+d.b/downscale+shift+60]]) ;})
+                .attr("stroke-width", 2)
+                .attr("stroke", "#56B4E9")
+                .attr("fill", "none");
+
+            common
+                .append("text")
+                .text("Common variants within 706 people from the Americas (~10 million sites)")
+                .attr("x", function(d) {return d.h/downscale+shift-150;})
+                .attr("y", function(d) {return d.k/downscale+d.b/downscale+shift+50; })
+                .style("text-anchor", "middle")
+                .style("fill", "#56B4E9")
+                .style("font-family", "Arial")
+                .style("font-size", 18)
+                .call(wrap, 250, 1, 1);
+
+            common
+                .append("path")
+                .attr("id", function(d) { return d._row; })
+                .attr("stroke", function(d) { return d.color; })
+                .attr("stroke-width", 3)
+                .attr("stroke-dasharray", function(d) { return d.stroke_dasharray; })
+                .attr("fill", function(d) { return d.fill; })
+                .attr("d", function(d) {
+                    return ["M", (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift), "A", d.a/downscale, d.b/downscale, 0, 1, 1, (d.h/downscale+d.a/downscale+shift), (d.k/downscale+shift-0.001)].join(' ')
+                })
+                .attr("transform", function(d) {
+                    return "rotate(" + d.phi*(180/Math.PI) + " " + (d.h/downscale+shift) + " " + (d.k/downscale+shift) + ")"; 
+                });
+
+        </script>
+
+        <div id="figureS3_ACB" style="display: flex; justify-content: center;"></div>
+        <script>
+            d3_euler(
+                data = [
+                    {"abbreviation":"ASW","h":-145.0476,"k":0,"a":1325.3266,"b":1635.1068,"phi":-1.8217,"common_variants":7020928,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"#0072B2","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":19.474,"k":97.999,"a":1122.3405,"b":1289.3956,"phi":-0.6415,"common_variants":4666113,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"#CC79A7","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":-12.6405,"k":25.2007,"a":1101.7453,"b":1389.4344,"phi":2.6291,"common_variants":4896250,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"#009E73","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":-79.3051,"k":91.3339,"a":1340.9749,"b":1091.8217,"phi":1.1932,"common_variants":4754620,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"#5E159A","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":3.9771,"k":31.4945,"a":1057.1546,"b":1362.9523,"phi":-0.4628,"common_variants":4672565,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"#56B4E9","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":40.6678,"k":-5.5381,"a":1351.6188,"b":967.7276,"phi":-2.0253,"common_variants":4261270,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"#E69F00","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":-58.1986,"k":20.7213,"a":1416.393,"b":1118.0982,"phi":-2.2776,"common_variants":5112528,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"#000000","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"ACB","h":-111.7152,"k":0,"a":1416.1481,"b":1744.1838,"phi":1.317,"common_variants":8018649,"unshared_common_variants":821254,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"#D55E00","fill":"none","stroke_dasharray":"none"}
+                ],
+                id = "ACB",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_ACB",
+                interactive = false
+            );
+
+            d3_euler(
+                data = [
+                    {"abbreviation":"ACB","h":-111.7152,"k":0,"a":1416.1481,"b":1744.1838,"phi":1.317,"common_variants":8018649,"unshared_common_variants":821254,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"none","fill":"#D55E00","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-145.0476,"k":0,"a":1325.3266,"b":1635.1068,"phi":-1.8217,"common_variants":7020928,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":19.474,"k":97.999,"a":1122.3405,"b":1289.3956,"phi":-0.6415,"common_variants":4666113,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":-12.6405,"k":25.2007,"a":1101.7453,"b":1389.4344,"phi":2.6291,"common_variants":4896250,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":-79.3051,"k":91.3339,"a":1340.9749,"b":1091.8217,"phi":1.1932,"common_variants":4754620,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":3.9771,"k":31.4945,"a":1057.1546,"b":1362.9523,"phi":-0.4628,"common_variants":4672565,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":40.6678,"k":-5.5381,"a":1351.6188,"b":967.7276,"phi":-2.0253,"common_variants":4261270,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":-58.1986,"k":20.7213,"a":1416.393,"b":1118.0982,"phi":-2.2776,"common_variants":5112528,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"}
+                ],
+                id = "ACB_shaded",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_ACB",
+                interactive = false
+            );
+
+            d3_euler(
+                data = [
+                    {"abbreviation":"ACB","h":-111.7152,"k":0,"a":1416.1481,"b":1744.1838,"phi":1.317,"common_variants":8018649,"unshared_common_variants":821254,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"none","fill":"#D55E00","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-145.0476,"k":0,"a":1325.3266,"b":1635.1068,"phi":-1.8217,"common_variants":7020928,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":19.474,"k":97.999,"a":1122.3405,"b":1289.3956,"phi":-0.6415,"common_variants":4666113,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":-12.6405,"k":25.2007,"a":1101.7453,"b":1389.4344,"phi":2.6291,"common_variants":4896250,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":-79.3051,"k":91.3339,"a":1340.9749,"b":1091.8217,"phi":1.1932,"common_variants":4754620,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":3.9771,"k":31.4945,"a":1057.1546,"b":1362.9523,"phi":-0.4628,"common_variants":4672565,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":40.6678,"k":-5.5381,"a":1351.6188,"b":967.7276,"phi":-2.0253,"common_variants":4261270,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":-58.1986,"k":20.7213,"a":1416.393,"b":1118.0982,"phi":-2.2776,"common_variants":5112528,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"}
+                ],
+                id = "ACB_cut",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_ACB",
+                interactive = false
+            );
+        </script>
+
+        <div id="figureS3_ASW" style="display: flex; justify-content: center;"></div>
+        <script>
+            d3_euler(
+                data = [
+                    {"abbreviation":"ACB","h":-77.3994,"k":0,"a":1480.0073,"b":1406.2494,"phi":1.7051,"common_variants":7020928,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"#D55E00","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":255.4755,"k":174.415,"a":1145.0525,"b":1236.8604,"phi":1.215,"common_variants":4810015,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"#CC79A7","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":238.0529,"k":117.0378,"a":1246.2303,"b":1198.5216,"phi":0.0295,"common_variants":5043889,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"#009E73","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":221.0751,"k":172.8982,"a":1267.9274,"b":1185.3366,"phi":-0.5962,"common_variants":4882719,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"#5E159A","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":269.1863,"k":98.5941,"a":1186.6198,"b":1215.136,"phi":1.2787,"common_variants":4819661,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"#56B4E9","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":306.223,"k":51.9203,"a":1125.8787,"b":1175.4445,"phi":-1.2297,"common_variants":4398728,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"#E69F00","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":194.0349,"k":102.5332,"a":1297.1033,"b":1207.8555,"phi":0.0081,"common_variants":5253401,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"#000000","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-13.3124,"k":0,"a":1524.4663,"b":1485.5465,"phi":2.8935,"common_variants":7631052,"unshared_common_variants":312765,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"#0072B2","fill":"none","stroke_dasharray":"none"}
+                ],
+                id = "ASW",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_ASW",
+                interactive = false
+            );
+
+            d3_euler(
+                data = [
+                    {"abbreviation":"ASW","h":-13.3124,"k":0,"a":1524.4663,"b":1485.5465,"phi":2.8935,"common_variants":7631052,"unshared_common_variants":312765,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"none","fill":"#0072B2","stroke_dasharray":"none"},
+                    {"abbreviation":"ACB","h":-77.3994,"k":0,"a":1480.0073,"b":1406.2494,"phi":1.7051,"common_variants":7020928,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":255.4755,"k":174.415,"a":1145.0525,"b":1236.8604,"phi":1.215,"common_variants":4810015,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":238.0529,"k":117.0378,"a":1246.2303,"b":1198.5216,"phi":0.0295,"common_variants":5043889,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":221.0751,"k":172.8982,"a":1267.9274,"b":1185.3366,"phi":-0.5962,"common_variants":4882719,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":269.1863,"k":98.5941,"a":1186.6198,"b":1215.136,"phi":1.2787,"common_variants":4819661,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":306.223,"k":51.9203,"a":1125.8787,"b":1175.4445,"phi":-1.2297,"common_variants":4398728,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":194.0349,"k":102.5332,"a":1297.1033,"b":1207.8555,"phi":0.0081,"common_variants":5253401,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"}
+                ],
+                id = "ASW_shaded",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_ASW",
+                interactive = false
+            );
+
+            d3_euler(
+                data = [
+                    {"abbreviation":"ASW","h":-13.3124,"k":0,"a":1524.4663,"b":1485.5465,"phi":2.8935,"common_variants":7631052,"unshared_common_variants":312765,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"none","fill":"#0072B2","stroke_dasharray":"none"},
+                    {"abbreviation":"ACB","h":-77.3994,"k":0,"a":1480.0073,"b":1406.2494,"phi":1.7051,"common_variants":7020928,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":255.4755,"k":174.415,"a":1145.0525,"b":1236.8604,"phi":1.215,"common_variants":4810015,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":238.0529,"k":117.0378,"a":1246.2303,"b":1198.5216,"phi":0.0295,"common_variants":5043889,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":221.0751,"k":172.8982,"a":1267.9274,"b":1185.3366,"phi":-0.5962,"common_variants":4882719,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":269.1863,"k":98.5941,"a":1186.6198,"b":1215.136,"phi":1.2787,"common_variants":4819661,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":306.223,"k":51.9203,"a":1125.8787,"b":1175.4445,"phi":-1.2297,"common_variants":4398728,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":194.0349,"k":102.5332,"a":1297.1033,"b":1207.8555,"phi":0.0081,"common_variants":5253401,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"}
+                ],
+                id = "ASW_cut",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_ASW",
+                interactive = false
+            );
+        </script>
+
+        <div id="figureS3_CEU" style="display: flex; justify-content: center;"></div>
+        <script>
+            d3_euler(
+                data = [
+                    {"abbreviation":"ACB","h":-96.8309,"k":-14.8903,"a":1145.4953,"b":1237.0776,"phi":3.1612,"common_variants":4666113,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"#D55E00","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-50.7732,"k":-14.8903,"a":1239.1806,"b":1200.0099,"phi":4.7705,"common_variants":4810015,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"#0072B2","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":27.6838,"k":13.1717,"a":1314.3573,"b":1232.397,"phi":2.7024,"common_variants":5259585,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"#009E73","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":66.1523,"k":-70.8184,"a":1284.8875,"b":1188.7243,"phi":6.1186,"common_variants":5014458,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"#5E159A","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":63.0113,"k":23.1116,"a":1256.9585,"b":1221.153,"phi":2.7818,"common_variants":4999087,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"#56B4E9","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":73.5677,"k":70.6115,"a":1231.4792,"b":1110.0477,"phi":3.0083,"common_variants":4440037,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"#E69F00","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":24.3709,"k":-2.096,"a":1254.6491,"b":1303.5469,"phi":0.5503,"common_variants":5329963,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"#000000","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":41.2354,"k":0,"a":1292.489,"b":1338.8043,"phi":1.4177,"common_variants":5726377,"unshared_common_variants":143951,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"#CC79A7","fill":"none","stroke_dasharray":"none"}
+                ],
+                id = "CEU",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_CEU",
+                interactive = false
+            );
+
+            d3_euler(
+                data = [
+                    {"abbreviation":"CEU","h":41.2354,"k":0,"a":1292.489,"b":1338.8043,"phi":1.4177,"common_variants":5726377,"unshared_common_variants":143951,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"none","fill":"#CC79A7","stroke_dasharray":"none"},
+                    {"abbreviation":"ACB","h":-96.8309,"k":-14.8903,"a":1145.4953,"b":1237.0776,"phi":3.1612,"common_variants":4666113,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-50.7732,"k":-14.8903,"a":1239.1806,"b":1200.0099,"phi":4.7705,"common_variants":4810015,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":27.6838,"k":13.1717,"a":1314.3573,"b":1232.397,"phi":2.7024,"common_variants":5259585,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":66.1523,"k":-70.8184,"a":1284.8875,"b":1188.7243,"phi":6.1186,"common_variants":5014458,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":63.0113,"k":23.1116,"a":1256.9585,"b":1221.153,"phi":2.7818,"common_variants":4999087,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":73.5677,"k":70.6115,"a":1231.4792,"b":1110.0477,"phi":3.0083,"common_variants":4440037,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":24.3709,"k":-2.096,"a":1254.6491,"b":1303.5469,"phi":0.5503,"common_variants":5329963,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"}
+                ],
+                id = "CEU_shaded",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_CEU",
+                interactive = false
+            );
+
+            d3_euler(
+                data = [
+                    {"abbreviation":"CEU","h":41.2354,"k":0,"a":1292.489,"b":1338.8043,"phi":1.4177,"common_variants":5726377,"unshared_common_variants":143951,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"none","fill":"#CC79A7","stroke_dasharray":"none"},
+                    {"abbreviation":"ACB","h":-96.8309,"k":-14.8903,"a":1145.4953,"b":1237.0776,"phi":3.1612,"common_variants":4666113,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-50.7732,"k":-14.8903,"a":1239.1806,"b":1200.0099,"phi":4.7705,"common_variants":4810015,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":27.6838,"k":13.1717,"a":1314.3573,"b":1232.397,"phi":2.7024,"common_variants":5259585,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":66.1523,"k":-70.8184,"a":1284.8875,"b":1188.7243,"phi":6.1186,"common_variants":5014458,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":63.0113,"k":23.1116,"a":1256.9585,"b":1221.153,"phi":2.7818,"common_variants":4999087,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":73.5677,"k":70.6115,"a":1231.4792,"b":1110.0477,"phi":3.0083,"common_variants":4440037,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":24.3709,"k":-2.096,"a":1254.6491,"b":1303.5469,"phi":0.5503,"common_variants":5329963,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"}
+                ],
+                id = "CEU_cut",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_CEU",
+                interactive = false
+            );
+        </script>
+
+        <div id="figureS3_CLM" style="display: flex; justify-content: center;"></div>
+        <script>
+            d3_euler(
+                data = [
+                    {"abbreviation":"ACB","h":-160.5857,"k":0.3718,"a":1280.2179,"b":1164.1951,"phi":1.7822,"common_variants":4896250,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"#D55E00","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-112.0946,"k":0.3718,"a":1218.9458,"b":1280.1618,"phi":-2.9617,"common_variants":5043889,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"#0072B2","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":31.3233,"k":-44.9456,"a":1208.4758,"b":1329.3185,"phi":1.4722,"common_variants":5259585,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"#CC79A7","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":35.1079,"k":11.1082,"a":1206.5812,"b":1296.5101,"phi":0.2694,"common_variants":5114077,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"#5E159A","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":16.0108,"k":84.0057,"a":1324.4454,"b":1241.0084,"phi":0.0183,"common_variants":5327378,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"#56B4E9","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":6.5893,"k":177.214,"a":1281.0753,"b":1161.6626,"phi":0.0254,"common_variants":4817623,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"#E69F00","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":-0.6259,"k":9.9312,"a":1250.0251,"b":1358.4667,"phi":1.5414,"common_variants":5521792,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"#000000","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":13.0109,"k":23.1724,"a":1363.4028,"b":1314.5887,"phi":-3.2256,"common_variants":5895649,"unshared_common_variants":30179,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"#009E73","fill":"none","stroke_dasharray":"none"}
+                ],
+                id = "CLM",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_CLM",
+                interactive = false
+            );
+
+            d3_euler(
+                data = [
+                    {"abbreviation":"CLM","h":13.0109,"k":23.1724,"a":1363.4028,"b":1314.5887,"phi":-3.2256,"common_variants":5895649,"unshared_common_variants":30179,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"none","fill":"#009E73","stroke_dasharray":"none"},
+                    {"abbreviation":"ACB","h":-160.5857,"k":0.3718,"a":1280.2179,"b":1164.1951,"phi":1.7822,"common_variants":4896250,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-112.0946,"k":0.3718,"a":1218.9458,"b":1280.1618,"phi":-2.9617,"common_variants":5043889,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":31.3233,"k":-44.9456,"a":1208.4758,"b":1329.3185,"phi":1.4722,"common_variants":5259585,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":35.1079,"k":11.1082,"a":1206.5812,"b":1296.5101,"phi":0.2694,"common_variants":5114077,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":16.0108,"k":84.0057,"a":1324.4454,"b":1241.0084,"phi":0.0183,"common_variants":5327378,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":6.5893,"k":177.214,"a":1281.0753,"b":1161.6626,"phi":0.0254,"common_variants":4817623,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":-0.6259,"k":9.9312,"a":1250.0251,"b":1358.4667,"phi":1.5414,"common_variants":5521792,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"}
+                ],
+                id = "CLM_shaded",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_CLM",
+                interactive = false
+            );
+
+            d3_euler(
+                data = [
+                    {"abbreviation":"CLM","h":13.0109,"k":23.1724,"a":1363.4028,"b":1314.5887,"phi":-3.2256,"common_variants":5895649,"unshared_common_variants":30179,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"none","fill":"#009E73","stroke_dasharray":"none"},
+                    {"abbreviation":"ACB","h":-160.5857,"k":0.3718,"a":1280.2179,"b":1164.1951,"phi":1.7822,"common_variants":4896250,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-112.0946,"k":0.3718,"a":1218.9458,"b":1280.1618,"phi":-2.9617,"common_variants":5043889,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":31.3233,"k":-44.9456,"a":1208.4758,"b":1329.3185,"phi":1.4722,"common_variants":5259585,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":35.1079,"k":11.1082,"a":1206.5812,"b":1296.5101,"phi":0.2694,"common_variants":5114077,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":16.0108,"k":84.0057,"a":1324.4454,"b":1241.0084,"phi":0.0183,"common_variants":5327378,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":6.5893,"k":177.214,"a":1281.0753,"b":1161.6626,"phi":0.0254,"common_variants":4817623,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":-0.6259,"k":9.9312,"a":1250.0251,"b":1358.4667,"phi":1.5414,"common_variants":5521792,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"}
+                ],
+                id = "CLM_cut",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_CLM",
+                interactive = false
+            );
+        </script>
+
+        <div id="figureS3_GIH" style="display: flex; justify-content: center;"></div>
+        <script>
+            d3_euler(
+                data = [
+                    {"abbreviation":"ACB","h":-83.9922,"k":13.8103,"a":1133.1877,"b":1278.2227,"phi":-3.2537,"common_variants":4754620,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"#D55E00","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-38.0202,"k":13.8103,"a":1271.3144,"b":1193.3354,"phi":-1.6995,"common_variants":4882719,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"#0072B2","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":85.1832,"k":-37.4487,"a":1201.0621,"b":1278.0718,"phi":1.4099,"common_variants":5014458,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"#CC79A7","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":68.9187,"k":24.0894,"a":1292.4178,"b":1218.6237,"phi":-3.2468,"common_variants":5114077,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"#009E73","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":82.8284,"k":56.1799,"a":1257.954,"b":1210.4387,"phi":-0.0758,"common_variants":4962864,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"#56B4E9","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":96.3805,"k":127.2938,"a":1229.5792,"b":1132.4273,"phi":-3.1433,"common_variants":4536592,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"#E69F00","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":54.981,"k":28.8989,"a":1236.1361,"b":1287.7812,"phi":0.7991,"common_variants":5162202,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"#000000","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":53,"k":15.8768,"a":1318.739,"b":1332.0251,"phi":-1.299,"common_variants":5788635,"unshared_common_variants":246658,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"#5E159A","fill":"none","stroke_dasharray":"none"}
+                ],
+                id = "GIH",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_GIH",
+                interactive = false
+            );
+
+            d3_euler(
+                data = [
+                    {"abbreviation":"GIH","h":53,"k":15.8768,"a":1318.739,"b":1332.0251,"phi":-1.299,"common_variants":5788635,"unshared_common_variants":246658,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"none","fill":"#5E159A","stroke_dasharray":"none"},
+                    {"abbreviation":"ACB","h":-83.9922,"k":13.8103,"a":1133.1877,"b":1278.2227,"phi":-3.2537,"common_variants":4754620,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-38.0202,"k":13.8103,"a":1271.3144,"b":1193.3354,"phi":-1.6995,"common_variants":4882719,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":85.1832,"k":-37.4487,"a":1201.0621,"b":1278.0718,"phi":1.4099,"common_variants":5014458,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":68.9187,"k":24.0894,"a":1292.4178,"b":1218.6237,"phi":-3.2468,"common_variants":5114077,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":82.8284,"k":56.1799,"a":1257.954,"b":1210.4387,"phi":-0.0758,"common_variants":4962864,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":96.3805,"k":127.2938,"a":1229.5792,"b":1132.4273,"phi":-3.1433,"common_variants":4536592,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":54.981,"k":28.8989,"a":1236.1361,"b":1287.7812,"phi":0.7991,"common_variants":5162202,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"}
+                ],
+                id = "GIH_shaded",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_GIH",
+                interactive = false
+            );
+
+            d3_euler(
+                data = [
+                    {"abbreviation":"GIH","h":53,"k":15.8768,"a":1318.739,"b":1332.0251,"phi":-1.299,"common_variants":5788635,"unshared_common_variants":246658,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"none","fill":"#5E159A","stroke_dasharray":"none"},
+                    {"abbreviation":"ACB","h":-83.9922,"k":13.8103,"a":1133.1877,"b":1278.2227,"phi":-3.2537,"common_variants":4754620,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-38.0202,"k":13.8103,"a":1271.3144,"b":1193.3354,"phi":-1.6995,"common_variants":4882719,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":85.1832,"k":-37.4487,"a":1201.0621,"b":1278.0718,"phi":1.4099,"common_variants":5014458,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":68.9187,"k":24.0894,"a":1292.4178,"b":1218.6237,"phi":-3.2468,"common_variants":5114077,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":82.8284,"k":56.1799,"a":1257.954,"b":1210.4387,"phi":-0.0758,"common_variants":4962864,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":96.3805,"k":127.2938,"a":1229.5792,"b":1132.4273,"phi":-3.1433,"common_variants":4536592,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":54.981,"k":28.8989,"a":1236.1361,"b":1287.7812,"phi":0.7991,"common_variants":5162202,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"}
+                ],
+                id = "GIH_cut",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_GIH",
+                interactive = false
+            );
+        </script>
+
+        <div id="figureS3_MXL" style="display: flex; justify-content: center;"></div>
+        <script>
+            d3_euler(
+                data = [
+                    {"abbreviation":"ACB","h":-157.0149,"k":21.9174,"a":1213.4758,"b":1152.8923,"phi":7.7267,"common_variants":4672565,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"#D55E00","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-110.7477,"k":21.9174,"a":1203.2587,"b":1218.5824,"phi":5.8911,"common_variants":4819661,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"#0072B2","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":-6.4183,"k":-38.3763,"a":1197.9432,"b":1252.1507,"phi":4.8453,"common_variants":4999087,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"#CC79A7","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":-27.1419,"k":36.6466,"a":1281.1942,"b":1258.1277,"phi":2.8791,"common_variants":5327378,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"#009E73","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":-5.3401,"k":21.3992,"a":1285.8822,"b":1179.5798,"phi":3.079,"common_variants":4962864,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"#5E159A","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":17.5175,"k":154.9475,"a":1274.146,"b":1152.5921,"phi":6.2151,"common_variants":4912197,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"#E69F00","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":-35.775,"k":12.1335,"a":1264.6552,"b":1248.4368,"phi":6.5662,"common_variants":5254464,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"#000000","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":-9.046,"k":42.4281,"a":1274.9753,"b":1315.2588,"phi":5.059,"common_variants":5663208,"unshared_common_variants":36285,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"#56B4E9","fill":"none","stroke_dasharray":"none"}
+                ],
+                id = "MXL",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_MXL",
+                interactive = false
+            );
+
+            d3_euler(
+                data = [
+                    {"abbreviation":"MXL","h":-9.046,"k":42.4281,"a":1274.9753,"b":1315.2588,"phi":5.059,"common_variants":5663208,"unshared_common_variants":36285,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"none","fill":"#56B4E9","stroke_dasharray":"none"},
+                    {"abbreviation":"ACB","h":-157.0149,"k":21.9174,"a":1213.4758,"b":1152.8923,"phi":7.7267,"common_variants":4672565,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-110.7477,"k":21.9174,"a":1203.2587,"b":1218.5824,"phi":5.8911,"common_variants":4819661,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":-6.4183,"k":-38.3763,"a":1197.9432,"b":1252.1507,"phi":4.8453,"common_variants":4999087,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":-27.1419,"k":36.6466,"a":1281.1942,"b":1258.1277,"phi":2.8791,"common_variants":5327378,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":-5.3401,"k":21.3992,"a":1285.8822,"b":1179.5798,"phi":3.079,"common_variants":4962864,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":17.5175,"k":154.9475,"a":1274.146,"b":1152.5921,"phi":6.2151,"common_variants":4912197,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":-35.775,"k":12.1335,"a":1264.6552,"b":1248.4368,"phi":6.5662,"common_variants":5254464,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"}
+                ],
+                id = "MXL_shaded",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_MXL",
+                interactive = false
+            );
+
+            d3_euler(
+                data = [
+                    {"abbreviation":"MXL","h":-9.046,"k":42.4281,"a":1274.9753,"b":1315.2588,"phi":5.059,"common_variants":5663208,"unshared_common_variants":36285,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"none","fill":"#56B4E9","stroke_dasharray":"none"},
+                    {"abbreviation":"ACB","h":-157.0149,"k":21.9174,"a":1213.4758,"b":1152.8923,"phi":7.7267,"common_variants":4672565,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-110.7477,"k":21.9174,"a":1203.2587,"b":1218.5824,"phi":5.8911,"common_variants":4819661,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":-6.4183,"k":-38.3763,"a":1197.9432,"b":1252.1507,"phi":4.8453,"common_variants":4999087,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":-27.1419,"k":36.6466,"a":1281.1942,"b":1258.1277,"phi":2.8791,"common_variants":5327378,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":-5.3401,"k":21.3992,"a":1285.8822,"b":1179.5798,"phi":3.079,"common_variants":4962864,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":17.5175,"k":154.9475,"a":1274.146,"b":1152.5921,"phi":6.2151,"common_variants":4912197,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":-35.775,"k":12.1335,"a":1264.6552,"b":1248.4368,"phi":6.5662,"common_variants":5254464,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"}
+                ],
+                id = "MXL_cut",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_MXL",
+                interactive = false
+            );
+        </script>
+
+        <div id="figureS3_PEL" style="display: flex; justify-content: center;"></div>
+        <script>
+            d3_euler(
+                data = [
+                    {"abbreviation":"ACB","h":-88.4656,"k":-28.8547,"a":1127.1826,"b":1158.0684,"phi":5.8376,"common_variants":4261270,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"#D55E00","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-49.8669,"k":-28.8547,"a":1182.8271,"b":1153.3889,"phi":4.0716,"common_variants":4398728,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"#0072B2","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":37.8121,"k":0.8327,"a":1196.536,"b":1143.0236,"phi":2.2047,"common_variants":4440037,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"#CC79A7","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":0,"k":9.4706,"a":1214.1051,"b":1218.7951,"phi":6.4342,"common_variants":4817623,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"#009E73","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":39.9121,"k":-49.2072,"a":1213.8654,"b":1149.33,"phi":3.8858,"common_variants":4536592,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"#5E159A","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":-5.1241,"k":20.1558,"a":1228.1174,"b":1237.275,"phi":6.5653,"common_variants":4912197,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"#56B4E9","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":4.0011,"k":0,"a":1198.1755,"b":1200.1899,"phi":1.1631,"common_variants":4700471,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"#000000","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":-2.2199,"k":18.631,"a":1253.3423,"b":1242.7066,"phi":4.1773,"common_variants":5140058,"unshared_common_variants":89425,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"#E69F00","fill":"none","stroke_dasharray":"none"}
+                ],
+                id = "PEL",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_PEL",
+                interactive = false
+            );
+
+            d3_euler(
+                data = [
+                    {"abbreviation":"PEL","h":-2.2199,"k":18.631,"a":1253.3423,"b":1242.7066,"phi":4.1773,"common_variants":5140058,"unshared_common_variants":89425,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"none","fill":"#E69F00","stroke_dasharray":"none"},
+                    {"abbreviation":"ACB","h":-88.4656,"k":-28.8547,"a":1127.1826,"b":1158.0684,"phi":5.8376,"common_variants":4261270,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-49.8669,"k":-28.8547,"a":1182.8271,"b":1153.3889,"phi":4.0716,"common_variants":4398728,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":37.8121,"k":0.8327,"a":1196.536,"b":1143.0236,"phi":2.2047,"common_variants":4440037,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":0,"k":9.4706,"a":1214.1051,"b":1218.7951,"phi":6.4342,"common_variants":4817623,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":39.9121,"k":-49.2072,"a":1213.8654,"b":1149.33,"phi":3.8858,"common_variants":4536592,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":-5.1241,"k":20.1558,"a":1228.1174,"b":1237.275,"phi":6.5653,"common_variants":4912197,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":4.0011,"k":0,"a":1198.1755,"b":1200.1899,"phi":1.1631,"common_variants":4700471,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"}
+                ],
+                id = "PEL_shaded",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_PEL",
+                interactive = false
+            );
+
+            d3_euler(
+                data = [
+                    {"abbreviation":"PEL","h":-2.2199,"k":18.631,"a":1253.3423,"b":1242.7066,"phi":4.1773,"common_variants":5140058,"unshared_common_variants":89425,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"none","fill":"#E69F00","stroke_dasharray":"none"},
+                    {"abbreviation":"ACB","h":-88.4656,"k":-28.8547,"a":1127.1826,"b":1158.0684,"phi":5.8376,"common_variants":4261270,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-49.8669,"k":-28.8547,"a":1182.8271,"b":1153.3889,"phi":4.0716,"common_variants":4398728,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":37.8121,"k":0.8327,"a":1196.536,"b":1143.0236,"phi":2.2047,"common_variants":4440037,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":0,"k":9.4706,"a":1214.1051,"b":1218.7951,"phi":6.4342,"common_variants":4817623,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":39.9121,"k":-49.2072,"a":1213.8654,"b":1149.33,"phi":3.8858,"common_variants":4536592,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":-5.1241,"k":20.1558,"a":1228.1174,"b":1237.275,"phi":6.5653,"common_variants":4912197,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":4.0011,"k":0,"a":1198.1755,"b":1200.1899,"phi":1.1631,"common_variants":4700471,"unshared_common_variants":0,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"}
+                ],
+                id = "PEL_cut",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_PEL",
+                interactive = false
+            );
+        </script>
+
+        <div id="figureS3_PUR" style="display: flex; justify-content: center;"></div>
+        <script>
+            d3_euler(
+                data = [
+                    {"abbreviation":"ACB","h":-86.7265,"k":-39.5146,"a":1175.4811,"b":1286.418,"phi":-3.1901,"common_variants":5112528,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"#D55E00","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-38.4169,"k":-39.5146,"a":1227.0805,"b":1289.2837,"phi":-3.3248,"common_variants":5253401,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"#0072B2","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":101.9382,"k":75.9669,"a":1284.4442,"b":1215.5276,"phi":-0.1517,"common_variants":5329963,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"#CC79A7","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":90.7931,"k":-19.358,"a":1295.9689,"b":1261.8305,"phi":-4.702,"common_variants":5521792,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"#009E73","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":88.0916,"k":0,"a":1202.953,"b":1316.4301,"phi":-4.6852,"common_variants":5162202,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"#5E159A","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":118.2286,"k":-50.6243,"a":1227.685,"b":1260.1247,"phi":-1.9376,"common_variants":5254464,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"#56B4E9","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":134.6031,"k":-113.5802,"a":1215.3813,"b":1158.4552,"phi":-0.1143,"common_variants":4700471,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"#E69F00","fill":"none","stroke_dasharray":"none"},
+                    {"abbreviation":"PUR","h":56.0591,"k":-25.364,"a":1310.95,"b":1349.6485,"phi":-4.2772,"common_variants":6053543,"unshared_common_variants":41531,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"#000000","fill":"none","stroke_dasharray":"none"}
+                ],
+                id = "PUR",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_PUR",
+                interactive = false
+            );
+
+            d3_euler(
+                data = [
+                    {"abbreviation":"PUR","h":56.0591,"k":-25.364,"a":1310.95,"b":1349.6485,"phi":-4.2772,"common_variants":6053543,"unshared_common_variants":41531,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"none","fill":"#000000","stroke_dasharray":"none"},
+                    {"abbreviation":"ACB","h":-86.7265,"k":-39.5146,"a":1175.4811,"b":1286.418,"phi":-3.1901,"common_variants":5112528,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-38.4169,"k":-39.5146,"a":1227.0805,"b":1289.2837,"phi":-3.3248,"common_variants":5253401,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":101.9382,"k":75.9669,"a":1284.4442,"b":1215.5276,"phi":-0.1517,"common_variants":5329963,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":90.7931,"k":-19.358,"a":1295.9689,"b":1261.8305,"phi":-4.702,"common_variants":5521792,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":88.0916,"k":0,"a":1202.953,"b":1316.4301,"phi":-4.6852,"common_variants":5162202,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":118.2286,"k":-50.6243,"a":1227.685,"b":1260.1247,"phi":-1.9376,"common_variants":5254464,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":134.6031,"k":-113.5802,"a":1215.3813,"b":1158.4552,"phi":-0.1143,"common_variants":4700471,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"none","fill":"rgba(255, 255, 255, 0.2)","stroke_dasharray":"none"}
+                ],
+                id = "PUR_shaded",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_PUR",
+                interactive = false
+            );
+
+            d3_euler(
+                data = [
+                    {"abbreviation":"PUR","h":56.0591,"k":-25.364,"a":1310.95,"b":1349.6485,"phi":-4.2772,"common_variants":6053543,"unshared_common_variants":41531,"description":"Puerto Rican in Puerto Rico","sampled_individuals":104,"color":"none","fill":"#000000","stroke_dasharray":"none"},
+                    {"abbreviation":"ACB","h":-86.7265,"k":-39.5146,"a":1175.4811,"b":1286.418,"phi":-3.1901,"common_variants":5112528,"unshared_common_variants":0,"description":"African Caribbean in Barbados","sampled_individuals":96,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"ASW","h":-38.4169,"k":-39.5146,"a":1227.0805,"b":1289.2837,"phi":-3.3248,"common_variants":5253401,"unshared_common_variants":0,"description":"African Ancestry in Southwest US","sampled_individuals":61,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"CEU","h":101.9382,"k":75.9669,"a":1284.4442,"b":1215.5276,"phi":-0.1517,"common_variants":5329963,"unshared_common_variants":0,"description":"Utah residents (CEPH) with Northern and Western European ancestry","sampled_individuals":99,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"CLM","h":90.7931,"k":-19.358,"a":1295.9689,"b":1261.8305,"phi":-4.702,"common_variants":5521792,"unshared_common_variants":0,"description":"Colombian in Medellin, Colombia","sampled_individuals":94,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"GIH","h":88.0916,"k":0,"a":1202.953,"b":1316.4301,"phi":-4.6852,"common_variants":5162202,"unshared_common_variants":0,"description":"Gujarati Indians in Houston, TX","sampled_individuals":103,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"MXL","h":118.2286,"k":-50.6243,"a":1227.685,"b":1260.1247,"phi":-1.9376,"common_variants":5254464,"unshared_common_variants":0,"description":"Mexican Ancestry in Los Angeles, California","sampled_individuals":64,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"},
+                    {"abbreviation":"PEL","h":134.6031,"k":-113.5802,"a":1215.3813,"b":1158.4552,"phi":-0.1143,"common_variants":4700471,"unshared_common_variants":0,"description":"Peruvian in Lima, Peru","sampled_individuals":85,"color":"none","fill":"rgba(255, 255, 255, 1)","stroke_dasharray":"none"}
+                ],
+                id = "PUR_cut",
+                dim = 350,
+                title = "",
+                title_color = "",
+                flip_title = "",
+                loc = "#figureS3_PUR",
+                interactive = false
+            );
+        </script>
+
+    </body>
+</html>

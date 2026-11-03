@@ -1,0 +1,11 @@
+name: euler
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bcftools
+  - python
+  - pip
+  - matplotlib
+  - pip:
+    - git+https://github.com/aabiddanda/geovar
